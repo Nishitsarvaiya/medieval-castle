@@ -7,6 +7,7 @@ import {
 	Matrix4,
 	Mesh,
 	MeshStandardMaterial,
+	Object3D,
 	PlaneGeometry,
 	Quaternion,
 	SphereGeometry,
@@ -240,16 +241,29 @@ export default class Castle {
 
 		const angleStep = (2 * Math.PI) / this.towerDimensions.top.count;
 		for (let i = 0; i < this.towerDimensions.top.count; i++) {
-			const angle = i * angleStep;
-			const cube = new Mesh(this.crenelationGeometry, this.towerCubesMaterial);
-			cube.position.set(
-				x + (this.towerDimensions.top.radius - 0.1) * Math.cos(angle),
-				h + 2.5 + 0.875,
-				z + (this.towerDimensions.top.radius - 0.1) * Math.sin(angle)
-			);
-			cube.lookAt(x, h + 2.5 + 0.875, z);
-			cube.castShadow = true;
-			this.group.add(cube);
+			const { top } = this.towerDimensions;
+			const instanceCount = top.count;
+			const instancedMesh = new InstancedMesh(this.crenelationGeometry, this.towerCubesMaterial, instanceCount);
+
+			const dummy = new Object3D();
+			const angleStep = (2 * Math.PI) / instanceCount;
+
+			for (let i = 0; i < instanceCount; i++) {
+				const angle = i * angleStep;
+
+				const px = x + (top.radius - 0.1) * Math.cos(angle);
+				const py = h + 2.5 + 0.875;
+				const pz = z + (top.radius - 0.1) * Math.sin(angle);
+
+				dummy.position.set(px, py, pz);
+				dummy.lookAt(x, py, z);
+				dummy.updateMatrix();
+
+				instancedMesh.setMatrixAt(i, dummy.matrix);
+			}
+
+			instancedMesh.castShadow = true;
+			this.group.add(instancedMesh);
 		}
 	}
 
