@@ -1,45 +1,88 @@
-import { TextureLoader, RepeatWrapping, SRGBColorSpace } from 'three';
+import { TextureLoader, RepeatWrapping, SRGBColorSpace, LoadingManager, Texture } from 'three';
 
+/**
+ * Represents a loader and cache for various texture sets.
+ * Supports asynchronous loading and progress tracking.
+ */
 export class Textures {
-	constructor() {
-		this.loader = new TextureLoader();
+	/**
+	 * @param {LoadingManager} [manager] - Optional THREE.LoadingManager instance for progress tracking.
+	 */
+	constructor(manager = new LoadingManager()) {
+		/** @type {LoadingManager} */
+		this.manager = manager;
 
-		this.floor = this.loadRepeatingTextureSet('./floor/coast_sand_rocks_02_1k/', 8);
-		this.wall = this.loadRepeatingTextureSet('./wall/castle_brick_broken_06_1k/');
-		this.roof = this.loadRepeatingTextureSet('./roof/roof_slates_02_1k/', 3, 1);
-		this.bush = this.loadRepeatingTextureSet('./bush/leaves_forest_ground_1k/', 2, 1);
-		this.grave = this.loadRepeatingTextureSet('./grave/plastered_stone_wall_1k/', 0.3, 0.4);
-		this.door = this.loadDoorTextures('./door/');
+		/** @type {TextureLoader} */
+		this.loader = new TextureLoader(this.manager);
 	}
 
-	loadTexture(path, repeatX = 1, repeatY = 1) {
-		const tex = this.loader.load(path);
+	/**
+	 * Loads all required texture sets asynchronously.
+	 * Call this before using any textures.
+	 * @returns {Promise<void>}
+	 */
+	async loadAll() {
+		const [floor, wall, tower, towerTop, towerCubes, bush] = await Promise.all([
+			this.loadRepeatingTextureSet('/textures/floor/', 20, 20),
+			this.loadRepeatingTextureSet('/textures/wall/', 4, 1),
+			this.loadRepeatingTextureSet('/textures/tower/', 10, 10),
+			this.loadRepeatingTextureSet('/textures/tower/', 12, 1),
+			this.loadRepeatingTextureSet('/textures/tower/', 1, 1),
+			this.loadRepeatingTextureSet('/textures/bush/', 2, 1),
+		]);
+
+		this.floor = floor;
+		this.wall = wall;
+		this.tower = tower;
+		this.towerTop = towerTop;
+		this.towerCubes = towerCubes;
+		this.bush = bush;
+	}
+
+	/**
+	 * Loads a single texture asynchronously with repeat wrapping.
+	 * @param {string} path
+	 * @param {number} repeatX
+	 * @param {number} repeatY
+	 * @returns {Promise<Texture>}
+	 */
+	async loadTexture(path, repeatX = 1, repeatY = 1) {
+		const tex = await this.loader.loadAsync(path);
 		tex.wrapS = tex.wrapT = RepeatWrapping;
 		tex.repeat.set(repeatX, repeatY);
 		return tex;
 	}
 
-	loadRepeatingTextureSet(basePath, repeatX = 1, repeatY = 1) {
-		return {
-			color: this.setColorSpace(this.loadTexture(`${basePath}diff_1k.jpg`, repeatX, repeatY)),
-			arm: this.loadTexture(`${basePath}arm_1k.jpg`, repeatX, repeatY),
-			normal: this.loadTexture(`${basePath}nor_gl_1k.jpg`, repeatX, repeatY),
-			disp: this.loadTexture(`${basePath}disp_1k.jpg`, repeatX, repeatY),
-		};
+	/**
+	 * Loads a standard PBR texture set with AO/Roughness/Metalness and normal maps.
+	 * @param {string} basePath
+	 * @param {number} repeatX
+	 * @param {number} repeatY
+	 * @returns {Promise<TextureSet>}
+	 */
+	async loadRepeatingTextureSet(basePath, repeatX = 1, repeatY = 1) {
+		const [color, arm, normal] = await Promise.all([
+			this.loadTexture(`${basePath}diff_1k.jpg`, repeatX, repeatY).then((t) => this.setColorSpace(t)),
+			this.loadTexture(`${basePath}arm_1k.jpg`, repeatX, repeatY),
+			this.loadTexture(`${basePath}nor_gl_1k.jpg`, repeatX, repeatY),
+		]);
+
+		// Try to load displacement map, catch if not found
+		let disp = null;
+		try {
+			disp = await this.loadTexture(`${basePath}disp_1k.jpg`, repeatX, repeatY);
+		} catch (err) {
+			console.warn(`[Textures] No displacement map found at ${basePath}disp_1k.jpg`);
+		}
+
+		return { color, arm, normal, disp };
 	}
 
-	loadDoorTextures(basePath) {
-		return {
-			color: this.setColorSpace(this.loader.load(`${basePath}color.jpg`)),
-			alpha: this.loader.load(`${basePath}alpha.jpg`),
-			ao: this.loader.load(`${basePath}ambientOcclusion.jpg`),
-			normal: this.loader.load(`${basePath}normal.jpg`),
-			metalness: this.loader.load(`${basePath}metalness.jpg`),
-			roughness: this.loader.load(`${basePath}roughness.jpg`),
-			height: this.loader.load(`${basePath}height.jpg`),
-		};
-	}
-
+	/**
+	 * Converts a texture to sRGB color space.
+	 * @param {Texture} texture
+	 * @returns {Texture}
+	 */
 	setColorSpace(texture) {
 		texture.colorSpace = SRGBColorSpace;
 		return texture;
